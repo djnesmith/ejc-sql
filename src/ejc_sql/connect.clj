@@ -31,7 +31,10 @@
 For debug purpose."
   (atom nil))
 
-(defn set-db [ejc-db]
+(defn set-db [{:keys [proxy-host proxy-port] :as ejc-db}]
+  (when (and proxy-host proxy-port)
+    (System/setProperty "socksProxyHost" proxy-host)
+    (System/setProperty "socksProxyPort" proxy-port))
   (reset! db ejc-db))
 
 (def current-query
