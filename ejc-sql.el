@@ -285,6 +285,8 @@ results. When nil, otherwise, provide `ejc-sql' users expected behaviour."
                                  classpath
                                  separator
                                  sslmode
+                                 ;; pass the connection through the given socks proxy
+                                 ;; does not handle auth atm
                                  proxy-host
                                  proxy-port
                                  ;; ----------
