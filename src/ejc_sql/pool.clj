@@ -17,10 +17,9 @@
 ;;; Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.  */
 
 (ns ejc-sql.pool
+  (:require [clojure.java.jdbc :as j])
   (:import [com.zaxxer.hikari HikariConfig HikariDataSource]
-           [java.sql DriverManager]
            [javax.sql DataSource]
-           [java.io PrintWriter]
            [java.util.logging Logger]))
 
 (def pool-registry
@@ -42,40 +41,39 @@
   (or (:connection-uri db)
       (str "jdbc:" (:subprotocol db) ":" (:subname db))))
 
+(defn- set-proxy!
+  "Set or clear SOCKS proxy System properties."
+  [proxy-host proxy-port]
+  (if (and proxy-host proxy-port)
+    (do
+      (System/setProperty "socksProxyHost" proxy-host)
+      (System/setProperty "socksProxyPort" proxy-port))
+    (do
+      (System/clearProperty "socksProxyHost")
+      (System/clearProperty "socksProxyPort"))))
+
 (defn- proxy-aware-datasource
   "Creates a DataSource that sets SOCKS proxy properties before connecting.
+  Uses clojure.java.jdbc/get-connection to avoid classloader issues with
+  dynamically-loaded JDBC drivers (reify classes get a DynamicClassLoader
+  that DriverManager can't resolve drivers through).
   Acquires proxy-lock to serialize proxy property manipulation across threads."
   [db]
-  (let [url (db->jdbc-url db)
-        user (:user db)
-        password (:password db)
-        proxy-host (:proxy-host db)
+  (let [proxy-host (:proxy-host db)
         proxy-port (:proxy-port db)
+        ;; Clean JDBC spec — only keys clojure.java.jdbc needs
+        jdbc-spec (select-keys db [:subprotocol :subname :user :password :connection-uri])
         login-timeout (atom 0)
         log-writer (atom nil)]
     (reify DataSource
       (getConnection [_]
         (locking proxy-lock
-          (if (and proxy-host proxy-port)
-            (do
-              (System/setProperty "socksProxyHost" proxy-host)
-              (System/setProperty "socksProxyPort" proxy-port))
-            (do
-              (System/clearProperty "socksProxyHost")
-              (System/clearProperty "socksProxyPort")))
-          (if (and user password)
-            (DriverManager/getConnection url user password)
-            (DriverManager/getConnection url))))
+          (set-proxy! proxy-host proxy-port)
+          (j/get-connection jdbc-spec)))
       (getConnection [_ user password]
         (locking proxy-lock
-          (if (and proxy-host proxy-port)
-            (do
-              (System/setProperty "socksProxyHost" proxy-host)
-              (System/setProperty "socksProxyPort" proxy-port))
-            (do
-              (System/clearProperty "socksProxyHost")
-              (System/clearProperty "socksProxyPort")))
-          (DriverManager/getConnection url user password)))
+          (set-proxy! proxy-host proxy-port)
+          (j/get-connection (assoc jdbc-spec :user user :password password))))
       (getLoginTimeout [_] @login-timeout)
       (setLoginTimeout [_ seconds] (reset! login-timeout seconds))
       (getLogWriter [_] @log-writer)
