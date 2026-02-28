@@ -19,7 +19,9 @@
 (ns ejc-sql.pool
   (:import [com.zaxxer.hikari HikariConfig HikariDataSource]
            [java.sql DriverManager]
-           [javax.sql DataSource]))
+           [javax.sql DataSource]
+           [java.io PrintWriter]
+           [java.util.logging Logger]))
 
 (def pool-registry
   "Maps db-identity-key -> HikariDataSource"
@@ -48,7 +50,9 @@
         user (:user db)
         password (:password db)
         proxy-host (:proxy-host db)
-        proxy-port (:proxy-port db)]
+        proxy-port (:proxy-port db)
+        login-timeout (atom 0)
+        log-writer (atom nil)]
     (reify DataSource
       (getConnection [_]
         (locking proxy-lock
@@ -71,7 +75,14 @@
             (do
               (System/clearProperty "socksProxyHost")
               (System/clearProperty "socksProxyPort")))
-          (DriverManager/getConnection url user password))))))
+          (DriverManager/getConnection url user password)))
+      (getLoginTimeout [_] @login-timeout)
+      (setLoginTimeout [_ seconds] (reset! login-timeout seconds))
+      (getLogWriter [_] @log-writer)
+      (setLogWriter [_ writer] (reset! log-writer writer))
+      (getParentLogger [_] (Logger/getLogger Logger/GLOBAL_LOGGER_NAME))
+      (isWrapperFor [_ iface] false)
+      (unwrap [_ iface] (throw (java.sql.SQLException. "Not a wrapper"))))))
 
 (defn make-pool
   "Creates a HikariDataSource for the given db-spec."
