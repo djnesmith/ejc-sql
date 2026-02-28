@@ -184,7 +184,7 @@ SELECT * FROM urls WHERE path like '%http://localhost%'"
                      (swap! current-query assoc
                             :stmt stmt
                             :conn conn)
-                     (j/query db stmt
+                     (j/query {:connection conn} stmt
                               {:as-arrays? true
                                :result-set-fn
                                (fn [rs]
